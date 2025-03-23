@@ -4,92 +4,246 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Просмотр сообщений</title>
-  <!-- Подключаем Supabase JS SDK с CDN -->
+  <title>Двусторонний чат</title>
+  <!-- Подключаем Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
+    * {
+      box-sizing: border-box;
+    }
     body {
       font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
       background-color: #f4f4f4;
-      padding: 20px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
     h1 {
       text-align: center;
+      margin: 10px 0;
+    }
+    .container {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 30%;
+      max-width: 300px;
+      background: #fff;
+      border-right: 1px solid #ccc;
+      padding: 10px;
+      overflow-y: auto;
+    }
+    .sidebar button {
+      width: 100%;
+      padding: 8px 10px;
+      margin-bottom: 5px;
+      border: 1px solid #ccc;
+      background: #f9f9f9;
+      cursor: pointer;
+      text-align: left;
+    }
+    .chat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      overflow: hidden;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 10px;
     }
     .message {
       background: #fff;
-      padding: 10px 15px;
+      padding: 10px;
       margin-bottom: 10px;
       border-radius: 5px;
       box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
+    .message.admin {
+      background: #e0f7fa;
+      text-align: right;
+    }
+    .message.user {
+      background: #f1f8e9;
+      text-align: left;
+    }
     .message .meta {
-      font-size: 0.9em;
+      font-size: 0.85em;
       color: #666;
       margin-bottom: 5px;
+    }
+    .sendBox {
+      display: flex;
+    }
+    .sendBox input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+    .sendBox button {
+      padding: 10px 20px;
+      border: none;
+      background: #4caf50;
+      color: #fff;
+      cursor: pointer;
+      margin-left: 5px;
+      border-radius: 3px;
     }
   </style>
 </head>
 <body>
-  <h1>Сообщения пользователей</h1>
-  <div id="messages">Загрузка сообщений...</div>
+  <h1>Двусторонний чат</h1>
+  <div class="container">
+    <!-- Левая панель: список пользователей -->
+    <div class="sidebar" id="usersList">
+      Загрузка пользователей...
+    </div>
+    <!-- Правая панель: чат с выбранным пользователем -->
+    <div class="chat">
+      <div class="messages" id="messages">
+        Выберите пользователя для просмотра диалога.
+      </div>
+      <div class="sendBox">
+        <input type="text" id="inputMessage" placeholder="Напишите сообщение...">
+        <button onclick="sendMessage()">Отправить</button>
+      </div>
+    </div>
+  </div>
   
   <script>
     // Данные вашего проекта Supabase
     const supabaseUrl = "https://esufsjaitlfvldtsauur.supabase.co";
     const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzdWZzamFpdGxmdmxkdHNhdXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI3MTA5NjgsImV4cCI6MjA1ODI4Njk2OH0.S5rk4uaJWqw4ViMbpnBw-udDAkccQu2tyYDQtIbHInk";
-    
-    // Инициализируем клиент Supabase под именем supabaseClient
     const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
-
-    // Функция для загрузки сообщений из таблицы "messages"
-    async function loadMessages() {
+    
+    let selectedUserId = null; // ID выбранного пользователя для чата
+    
+    // Функция для загрузки уникальных пользователей из таблицы messages
+    async function loadUsers() {
       try {
-        // Запрашиваем все сообщения, сортируя по дате (от новых к старым)
+        // Выбираем только поля user_id, username, first_name, last_name
+        let { data: users, error } = await supabaseClient
+          .from('messages')
+          .select('user_id, username, first_name, last_name')
+          .order('created_at', { ascending: false });
+          
+        if (error) {
+          document.getElementById('usersList').innerText = "Ошибка загрузки пользователей: " + error.message;
+          return;
+        }
+        
+        if (!users || users.length === 0) {
+          document.getElementById('usersList').innerText = "Нет пользователей.";
+          return;
+        }
+        
+        // Создаем объект для уникальных пользователей
+        const uniqueUsers = {};
+        users.forEach(u => {
+          uniqueUsers[u.user_id] = u;
+        });
+        
+        const usersList = document.getElementById('usersList');
+        usersList.innerHTML = "";
+        for (const uid in uniqueUsers) {
+          const user = uniqueUsers[uid];
+          const btn = document.createElement('button');
+          let displayName = user.username || user.first_name || uid;
+          btn.innerText = displayName;
+          btn.onclick = () => loadUserMessages(uid);
+          usersList.appendChild(btn);
+        }
+      } catch (err) {
+        document.getElementById('usersList').innerText = "Ошибка: " + err;
+      }
+    }
+    
+    // Функция для загрузки переписки выбранного пользователя
+    async function loadUserMessages(uid) {
+      selectedUserId = uid;
+      try {
         let { data: messages, error } = await supabaseClient
           .from('messages')
           .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) {
-          document.getElementById('messages').innerText = "Ошибка загрузки сообщений: " + error.message;
-          return;
-        }
-
-        // Если сообщений нет
-        if (!messages || messages.length === 0) {
-          document.getElementById('messages').innerText = "Нет сообщений.";
-          return;
-        }
-
-        // Формируем HTML для каждого сообщения
+          .eq('user_id', uid)
+          .order('created_at', { ascending: true });
+          
         const messagesContainer = document.getElementById('messages');
+        if (error) {
+          messagesContainer.innerText = "Ошибка загрузки сообщений: " + error.message;
+          return;
+        }
+        if (!messages || messages.length === 0) {
+          messagesContainer.innerText = "Нет сообщений для этого пользователя.";
+          return;
+        }
         messagesContainer.innerHTML = "";
         messages.forEach(msg => {
-          const messageDiv = document.createElement('div');
-          messageDiv.classList.add('message');
-          
+          const msgDiv = document.createElement('div');
+          msgDiv.classList.add('message');
+          // Выравниваем по типу отправителя: user - слева, admin/bot - справа
+          if(msg.sender_type === "admin" || msg.sender_type === "bot") {
+            msgDiv.classList.add('admin');
+          } else {
+            msgDiv.classList.add('user');
+          }
           const metaDiv = document.createElement('div');
           metaDiv.classList.add('meta');
-          // Если поле username пустое, показываем user_id
-          metaDiv.innerText = `Пользователь: ${msg.username || msg.user_id} | Дата: ${new Date(msg.created_at).toLocaleString()}`;
-
+          // Показываем имя отправителя и дату
+          let sender = msg.sender_type === "user" ? (msg.username || msg.first_name || msg.user_id) : msg.sender_type;
+          metaDiv.innerText = `От: ${sender} | Дата: ${new Date(msg.created_at).toLocaleString()}`;
           const textDiv = document.createElement('div');
-          textDiv.classList.add('text');
           textDiv.innerText = msg.message_text;
-
-          messageDiv.appendChild(metaDiv);
-          messageDiv.appendChild(textDiv);
-
-          messagesContainer.appendChild(messageDiv);
+          
+          msgDiv.appendChild(metaDiv);
+          msgDiv.appendChild(textDiv);
+          messagesContainer.appendChild(msgDiv);
         });
       } catch (err) {
         document.getElementById('messages').innerText = "Ошибка: " + err;
       }
     }
-
-    // Вызываем функцию загрузки сообщений при загрузке страницы
-    window.onload = loadMessages;
+    
+    // Функция для отправки сообщения через HTTP-эндпоинт
+    async function sendMessage() {
+      const input = document.getElementById('inputMessage');
+      const text = input.value.trim();
+      if (!text || !selectedUserId) {
+        alert("Выберите пользователя и введите сообщение.");
+        return;
+      }
+      
+      // Замените URL ниже на актуальный адрес вашего HTTP-сервера (например, если вы запустили FastAPI, то http://your-server:8000/send_message)
+      const endpoint = "http://localhost:8000/send_message";
+      
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: selectedUserId, text: text, admin_id: "your_admin_id" })
+        });
+        const result = await response.json();
+        if (result.status === "ok") {
+          // После успешной отправки обновляем переписку
+          await loadUserMessages(selectedUserId);
+          input.value = "";
+        } else {
+          alert("Ошибка отправки: " + result.detail);
+        }
+      } catch (err) {
+        alert("Ошибка: " + err);
+      }
+    }
+    
+    // При загрузке страницы запускаем функцию загрузки пользователей
+    window.onload = loadUsers;
   </script>
 </body>
 </html>
