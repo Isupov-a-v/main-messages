@@ -128,7 +128,7 @@
     // Функция для загрузки уникальных пользователей из таблицы messages
     async function loadUsers() {
       try {
-        // Выбираем только поля user_id, username, first_name, last_name
+        // Выбираем поля, где есть user_id, username, first_name, last_name
         let { data: users, error } = await supabaseClient
           .from('messages')
           .select('user_id, username, first_name, last_name')
@@ -154,8 +154,24 @@
         usersList.innerHTML = "";
         for (const uid in uniqueUsers) {
           const user = uniqueUsers[uid];
+          let displayName = "";
+          
+          // Пытаемся собрать имя: first_name + last_name
+          if (user.first_name || user.last_name) {
+            let first = user.first_name ? user.first_name : "";
+            let last = user.last_name ? user.last_name : "";
+            displayName = (first + " " + last).trim();
+          }
+          // Если имя пустое, берем username
+          if (!displayName && user.username) {
+            displayName = user.username;
+          }
+          // Если и username пустой, берем user_id
+          if (!displayName) {
+            displayName = uid;
+          }
+          
           const btn = document.createElement('button');
-          let displayName = user.username || user.first_name || uid;
           btn.innerText = displayName;
           btn.onclick = () => loadUserMessages(uid);
           usersList.appendChild(btn);
@@ -189,7 +205,7 @@
           const msgDiv = document.createElement('div');
           msgDiv.classList.add('message');
           // Выравниваем по типу отправителя: user - слева, admin/bot - справа
-          if(msg.sender_type === "admin" || msg.sender_type === "bot") {
+          if (msg.sender_type === "admin" || msg.sender_type === "bot") {
             msgDiv.classList.add('admin');
           } else {
             msgDiv.classList.add('user');
@@ -197,7 +213,9 @@
           const metaDiv = document.createElement('div');
           metaDiv.classList.add('meta');
           // Показываем имя отправителя и дату
-          let sender = msg.sender_type === "user" ? (msg.username || msg.first_name || msg.user_id) : msg.sender_type;
+          let sender = msg.sender_type === "user"
+            ? (msg.username || msg.first_name || msg.user_id)
+            : msg.sender_type;
           metaDiv.innerText = `От: ${sender} | Дата: ${new Date(msg.created_at).toLocaleString()}`;
           const textDiv = document.createElement('div');
           textDiv.innerText = msg.message_text;
@@ -220,14 +238,15 @@
         return;
       }
       
-      // Замените URL ниже на актуальный адрес вашего HTTP-сервера (например, если вы запустили FastAPI, то http://your-server:8000/send_message)
-      const endpoint = "http://localhost:8000/send_message";
+      // Замените URL ниже на реальный адрес, по которому доступен ваш бот-сервер
+      // Например: https://mydomain.com/send_message или http://<Ваш_IP>:8000/send_message
+      const endpoint = "http://YOUR_SERVER_URL/send_message";
       
       try {
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: selectedUserId, text: text, admin_id: "your_admin_id" })
+          body: JSON.stringify({ user_id: selectedUserId, text: text, admin_id: "12345" })
         });
         const result = await response.json();
         if (result.status === "ok") {
